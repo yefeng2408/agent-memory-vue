@@ -2,7 +2,8 @@
 import { ref } from 'vue'
 import { sendMessage } from './api/chatApi'
 import { useAgentStore } from './store/agentStore'
-import ClaimGraphPanel from './components/ClaimGraphPanel.vue'
+//import ClaimGraphPanel from './components/ClaimGraphPanel.vue'
+import HelloWorld from './components/HelloWorld.vue'
 
 const store = useAgentStore()
 
@@ -22,8 +23,7 @@ async function chat() {
   <div>
 
     <!-- GraphPanel 放最上面 -->
-    <ClaimGraphPanel v-if="store.relation" />
-
+    <HelloWorld />
     <div style="padding:40px">
       <h2>Memory Agent Console</h2>
 

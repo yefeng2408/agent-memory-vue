@@ -66,19 +66,14 @@ function focusDominant(nodeId:string){
 
   if(!network) return
 
-  // v3: 先把目标节点“吸”到视图中心（position），再做一次轻微 focus（scale）
-  const posMap = network.getPositions([nodeId]) as any
-  const pos = posMap?.[nodeId]
-  if (pos) {
-    network.moveTo({
-      position: pos,
-      scale: 1.15,
-      animation: {
-        duration: 900,
-        easingFunction: 'easeInOutQuad'
-      }
-    })
-  }
+  // network.moveTo({
+  //   position: { x:0, y:0 },
+  //   scale: 1.2,
+  //   animation:{
+  //     duration:600,
+  //     easingFunction:'easeInOutQuad'
+  //   }
+  // })
 
   // 再轻微 focus，让它成为视觉中心
   network.focus(nodeId,{
@@ -177,17 +172,17 @@ function applyTransition(d: DecisionLike | null | undefined) {
   const type = (d?.type ?? null) as DecisionType | null
   if (!type) return
 
-  // 状态没变，不触发动画
+  // ⭐ 状态没变，不触发动画
   if (lastDecisionType.value === type) return
   lastDecisionType.value = type
 
-  // 颜色映射
+  // ⭐ Slot‑Centric v2：动画只代表“Dominant 演化”
   if (type === 'CONFIRMED') beginTrail('#3b82f6')
   else if (type === 'OVERRIDDEN') beginTrail('#f97316')
   else if (type === 'UNCERTAIN') beginTrail('#9ca3af')
 
-  // 目标节点：当前 demo 只有 subject/object，两者里选 subject 作为 Dominant
-  const sid = store.relation?.subjectId
+  // ⭐ 现在 Dominant 目标是 claim.subjectId（而不是 relation）
+  const sid = store.decision?.claim?.subjectId
   if (sid) {
     focusDominant(sid)
     shakeAndFade(sid)
@@ -198,85 +193,80 @@ function applyTransition(d: DecisionLike | null | undefined) {
 function renderGraph() {
   if (!container.value) return
 
-  // ⭐ 从 store 读取 relation（后端可能返回 null，不要销毁 network）
-  const r = store.relation as ExtractedRelation | null
+  const claim = store.decision?.claim
+  if (!claim) return
 
-  // 调试日志：联调阶段用于确认后端是否真的返回 relation
-  console.log('[GraphPanel] relation =', r, 'decision =', decision.value)
+  const subjectId = claim.subjectId
+  const objectId = claim.objectId
+  const predicate = claim.predicate
 
-  // 如果本次没有抽取到 relation，只跳过渲染，不 destroy graph
-  if (!r) {
-    return
-  }
-
-  const dominantId = r.subjectId
-  const dimOthers = !!flashColor.value // 只有在迁移动画期间才弱化其它节点
+  const slotId = claim.batch ?? 'slot-init'
 
   const nodes = [
     {
-      id: r.subjectId,
-      label: r.subjectId,
-      size: decision.value?.type === 'CONFIRMED'
-        ? 30 * pulseScale.value
-        : 20,
-      color: {
-        background: '#bfdbfe',
-        border: '#3b82f6'
-      },
-      font: {
-        color: '#111827'
-      }
+      id: slotId,
+      label: slotId,
+      shape: 'box',
+      color: '#14b8a6',
+      size: 26,
+      level: 0
     },
     {
-      id: r.objectId,
-      label: r.objectId,
-      size: 20,
-      color: dimOthers
-        ? { background: '#f3f4f6', border: '#e5e7eb' }
-        : { background: '#dbeafe', border: '#93c5fd' },
-      font: dimOthers
-        ? { color: '#9ca3af' }
-        : { color: '#111827' }
+      id: subjectId,
+      label: subjectId,
+      shape: 'dot',
+      color: '#f97316',
+      level: 1,
+      size: decision.value?.type === 'CONFIRMED'
+        ? 30 * pulseScale.value
+        : 22
+    },
+    {
+      id: objectId,
+      label: objectId,
+      shape: 'ellipse',
+      color: '#3b82f6',
+      level: 2,
+      size: 20
     }
   ]
 
-  // v3: 如果 future 扩展为多节点，这里保留 hook
-  // （目前 demo 只有 subject/object，object 作为非 dominant）
-
   const edges = [
     {
-      from: r.subjectId,
-      to: r.objectId,
-      label: r.predicateType,
+      from: slotId,
+      to: subjectId,
+      label: 'DOMINANT',
+      arrows: 'to',
+      dashes: true,
+      color: '#9ca3af',
+      width: 2
+    },
+    {
+      from: subjectId,
+      to: objectId,
+      label: predicate,
+      arrows: 'to',
       width: flashColor.value ? trailWidth.value : glowWidth.value,
       color: flashColor.value
-        ? {
-            color: flashColor.value,
-            opacity: trailOpacity.value
-          }
-        : (r.polarity ? 'green' : 'red'),
-      // v3: 第二层光轨（shadow），让边是“边沿发光”而不是纯颜色跳变
-      shadow: flashColor.value
-        ? {
-            enabled: true,
-            color: flashColor.value,
-            size: Math.max(8, trailWidth.value * 2),
-            x: 0,
-            y: 0
-          }
-        : { enabled: false }
+        ? { color: flashColor.value, opacity: trailOpacity.value }
+        : (claim.polarity ? '#22c55e' : '#ef4444')
     }
   ]
 
   if (!network) {
     network = new Network(container.value, { nodes, edges }, {
-      edges: {
-        smooth: {
-          type: 'dynamic'
+      physics: false,
+      layout: {
+        hierarchical: {
+          enabled: true,
+          direction: 'LR',
+          levelSeparation: 160,
+          nodeSpacing: 120
         }
       },
-      interaction: {
-        hover: true
+      edges: {
+        smooth: true,
+        arrows: { to: { enabled: true } }
       }
     })
   } else {
